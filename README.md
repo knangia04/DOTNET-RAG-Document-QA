@@ -1,4 +1,5 @@
 # DOTNET-RAG-Document-QA
+**Author:** Krish Nangia
 
 A .NET 8 console application implementing a RAG pipeline for document-based question answering.  
 This code ingests plain text documents, generate embeddings for semantic search, and query an LLM to get answers grounded strictly in the provided documents.
