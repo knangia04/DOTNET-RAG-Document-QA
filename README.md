@@ -1,264 +1,110 @@
-# .NET-RAG-Document-QA
-A .NET 8 console application implementing a Retrieval-Augmented Generation (RAG) pipeline for document-based question answering. Users can ingest text documents, create embeddings, store them in a vector database, and query an LLM (Google Gemini) for answers grounded in the ingested content.
-
-Table of Contents
-
-Overview
-
-System Flow
-
-Step-by-Step Flow
-
-Features
-
-Assumptions
-
-Prerequisites
-
-Setup & Installation
-
-Usage
-
-Code Structure
-
-Testing & Sample Queries
-
-Limitations
-
-Notes
-
-Overview
-
-This project demonstrates a .NET RAG system that:
-
-Ingests .txt documents.
-
-Chunks the documents into smaller pieces for embedding.
+# DOTNET-RAG-Document-QA
 
-Generates embeddings via an LLM embedding service (Google Gemini).
+A .NET 8 console application implementing a RAG pipeline for document-based question answering.  
+This code ingests plain text documents, generate embeddings for semantic search, and query an LLM to get answers grounded strictly in the provided documents.
 
-Stores embeddings in a local JSON-based vector store (FileVectorStore).
+---
 
-Performs similarity search to find the most relevant chunks for a user query.
+## Overview
 
-Sends relevant context to an LLM to generate answers.
+This application is designed to demonstrate a simple RAG workflow:
 
-System Flow
+1. **Document Ingestion** – Read and chunk text documents.
+2. **Vector Embedding** – Generate embeddings for each chunk using Gemini.
+3. **Vector Store** – Store chunk embeddings with metadata for retrieval.
+4. **Query Handling** – Accept user questions via the console.
+5. **Similarity Search** – Retrieve the most relevant chunks using cosine similarity.
+6. **LLM Answer Generation** – Send retrieved context + user question to LLM to produce a grounded answer.
 
-Here’s a high-level flow of the system:
+---
 
-+-------------------+
-|  Start Program    |
-+-------------------+
-          |
-          v
-+-------------------+
-| Load Vector Store |<----------------+
-+-------------------+                 |
-          |                            |
-          v                            |
-+-------------------+                  |
-|  Load Documents   |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-| Check Already     |                  |
-| Ingested Files    |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-|  Slice Documents  |                  |
-|  into Chunks      |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-| Generate Embedding|                  |
-| for Each Chunk    |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-|  Save Chunks to   |                  |
-|  Vector Store     |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-| User Input Query  |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-| Search Vector     |                  |
-| Store (Top N)     |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-|  Build Context    |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-|  Send to LLM      |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-|  Display Answer   |                  |
-+-------------------+                  |
-          |                            |
-          v                            |
-+-------------------+                  |
-| Repeat Until Exit |------------------+
-+-------------------+
+## Step-by-Step Flow
 
-Step-by-Step Flow
+### 1. Program Startup
+- Loads `FileVectorStore` from the configured `VECTOR_STORE_LOCATION`.
+- If the folder does not exist, initializes a new store.
 
-Program Startup
+### 2. **Document Ingestion**  
+   - Scans `DOCUMENTS_FOLDER_PATH` for `.txt` files.  
+   - Checks whether files were previously ingested by comparing existing vector store chunks.  
+   - **Already ingested files are skipped** to avoid duplication.  
+   - Currently, ingesting all documents in the `Stories` directory from scratch takes **around 6 minutes**.
 
-Loads FileVectorStore from the configured VECTOR_STORE_LOCATION.
+### 3. Chunking Documents
+- Reads each file’s content.
+- Uses `SemanticSlicer` to split the document into smaller chunks (e.g., 50–100 words per chunk).
 
-Checks if the folder exists; otherwise initializes a new store.
+### 4. Embedding Generation
+- For each chunk, calls `GeminiEmbeddingGenerator` to produce a vector embedding.
+- Stores metadata for each chunk:
+  - `SourceFile` – the original filename
+  - `ChunkIndex` – position of the chunk within the file
 
-Document Ingestion
+### 5. Vector Store Update
+- Adds each chunk and its embedding to `FileVectorStore`.
+- Implements a delay (`delayMs`) between API calls to avoid rate limiting.
 
-Scans the DOCUMENTS_FOLDER_PATH for .txt files.
+### 6. User Query Handling
+- Waits for console input from the user.
+- Accepts natural language questions.
+- Type `exit` to quit.
 
-Checks if files were previously ingested by comparing existing vector store chunks.
+### 7. Similarity Search
+- Computes similarity (cosine similarity) between query embedding and stored chunk embeddings.
+- Retrieves the top N most relevant chunks (default: 5).
 
-Skips already ingested files to avoid duplication.
+### 8. Context Construction
+- Combines the retrieved chunks into a single context string.
+- Optionally includes metadata such as `SourceFile` and `ChunkIndex` for debugging.
 
-Chunking Documents
+### 9. LLM Query & Answer Generation
+- Sends the context and question as a prompt to the LLM (`LLMService`).
+- Receives an answer grounded strictly in the provided context.
 
-Reads file content.
+### 10. Output Answer
+- Prints the answer to the console.
+- Loops back to accept more queries until the user exits.
 
-Uses Slicer to break the document into smaller chunks (e.g., 50–100 words per chunk).
+---
 
-This ensures manageable embedding sizes for the LLM.
+## Features
+- Incremental document ingestion.
+- Chunk-based vector embeddings for precise semantic retrieval.
+- Top-N similarity search for relevant context.
+- LLM-based answer generation grounded in retrieved chunks.
+- Simple console interface with safe exit handling.
 
-Embedding Generation
+---
 
-For each chunk, calls GeminiEmbeddingGenerator to generate a vector embedding.
+## Approach & Assumptions
+- Unique filenames are used for ingestion detection. If a file is modified but the name is unchanged, the system will not re-ingest it.
+- The vector store preserves all previous embeddings; old chunks remain even if files are updated.
+- Works only with plain text documents. PDFs or Word documents require preprocessing into `.txt`.
+- Delays (`delayMs`) are used to avoid hitting rate limits.
+- Metadata such as `SourceFile` and `ChunkIndex` is optional but useful for debugging and context reference.
 
-Stores metadata for each chunk:
+---
 
-SourceFile
+## Setup & Installation
 
-ChunkIndex
-
-Vector Store Update
-
-Adds each chunk and its embedding to FileVectorStore.
-
-Delays between API calls (delayMs) to avoid rate limits.
-
-User Query Handling
-
-Waits for console input from the user.
-
-Accepts natural language questions.
-
-Type exit to quit.
-
-Similarity Search
-
-Computes similarity (cosine similarity) between query embedding and stored chunk embeddings.
-
-Retrieves top N most relevant chunks.
-
-Context Construction
-
-Combines the top chunks into a single context string.
-
-Can optionally include metadata like SourceFile and ChunkIndex for debugging.
-
-LLM Query & Answer Generation
-
-Sends the context + question as a prompt to the LLM (LLMService).
-
-Receives an answer strictly based on the provided context.
-
-Output Answer
-
-Prints answer to console.
-
-Loops back to accept more queries until user exits.
-
-Features
-
-Incremental document ingestion.
-
-Chunk-based vector embeddings for improved semantic retrieval.
-
-Top-N similarity search for precise context retrieval.
-
-LLM-based answer generation grounded in retrieved chunks.
-
-Console interface with simple exit handling.
-
-Assumptions
-
-Unique filenames are required for ingestion detection.
-
-Updating a file will not trigger re-ingestion unless the filename changes.
-
-Works only for plain text documents. PDFs or Word documents need preprocessing.
-
-Free-tier Gemini API usage is limited (~20 requests/day).
-
-SourceFile metadata is optional in output but useful for debugging.
-
-Prerequisites
-
-.NET 8 SDK
-
-Google Cloud project with Gemini API enabled
-
-Valid API key for Gemini
-
-Console environment or IDE (Visual Studio, VS Code)
-
-Setup & Installation
-git clone https://github.com/your-username/DOTNET-RAG-Document-QA.git
+```bash
+git clone https://github.com/knangia04/DOTNET-RAG-Document-QA.git
 cd DOTNET-RAG-Document-QA
 dotnet restore
 dotnet build
+```
+- Place your documents in the `Documents` folder and set  `GlobalSettings.DOCUMENTS_FOLDER_PATH` in the `GlobalSettings.cs`.
+- Set `GlobalSettings.VECTOR_STORE_LOCATION` for storing chunk embeddings.
 
+---
 
-Place documents in the Documents folder (or configure GlobalSettings.DOCUMENTS_FOLDER_PATH).
+## Usage
 
-Set GlobalSettings.VECTOR_STORE_LOCATION for chunk storage.
+Run the application:
 
-Usage
+```bash
 dotnet run
-
-
-The program will ingest new documents.
-
-After ingestion, you can enter questions.
-
-Type exit to quit.
-
-Example Queries
-
-"What lesson does The Tortoise and the Hare teach?"
-
-"Who helps the Lion in The Lion and the Mouse?"
-
-"Summarize Sonnet 1."
-
-"What is the main conflict in Antony and Cleopatra?"
-
-"eixt" → handled safely (returns no answer).
-
-Limitations
-
-Free-tier API quotas may restrict LLM queries.
-
-Updating a file does not refresh embeddings automatically.
-
-Only text documents are supported.
+```
+- The program will ingest new documents and generate embeddings.
+- After ingestion, you can enter questions interactively.
+- Type `exit` to quit the program safely.
